@@ -1,3 +1,107 @@
+# Fork of ESP RFID with extended MQTT Functions
+First the extended functions are documented here followed by the original descrition. The original ESP-RFID solution is already a great piece of Software, but I wanted extended functinality to integrate my RIFID-DOOR into a home automatisation over MQTT. 
+
+
+Hardware you need:
+* Do it on your own the openhardware schematic & gerbers files and KiCad Project can be found at [marelab RFID-DOOR](https://github.com/marelab/rfid-door)
+* Or a ready to use marelab RFID-DOOR board or a pcb can be ordered here at the [marlab.org](https://www.marelab.org/smart-home-diy/rfid-door-system) webside.
+* Or the [ESP-RFID-RELAY BOARD](https://github.com/esprfid/esp-rfid-relay-board)  (see differences to the marelab board [marlab.org](https://www.marelab.org/smart-home-diy/rfid-door-system))
+* marelab fork ESP-RFID (firmware)
+* marelab NODE-RED ESP-RFID integration (needs the marelab fork of ESP-RFID as firmware)
+
+This has been added so far to this fork:
+* Reading all user data over MQTT
+* Sending User data to RFID-DOOR/ESP-RFID over MQTT
+* Sending door open command over MQTT
+* Sending Sync of a RFID-DOOR (IP/Hostname) over MQTT
+* Configure Sync interval over ESP-RFID GUI
+* Deleting all User of a ESP-RFID device over MQTT
+* [NODE-RED flow & GUI to centralize managment of ESP-RFID devices & users](https://flows.nodered.org/flow/b9860e96b4df2c1a94a864b6343b067b)
+
+## Using MQTT Topics
+For the MQTT communication some additional TOPICs have been internaly added. The default Topic is still configured over the WebGui. If you use more then one device all used devices should have the same <TOPIC> name configured by the WebGui. This is the used Topic hirachy:
+          
+```
+(TOPIC)---+---/sync
+          |
+          +---/send
+          |
+          +---/accesslist
+          |
+          +---/LWT
+          |
+          +---/doorstatus
+          |
+          +---/action
+```
+  
+  If you configured over the WebGui for example (TOPIC) = "/rfid" these topic queues can be used:
+  * /rfid
+  * /rfid/sync
+  * /rfid/send
+  * /rfid/accesslist
+  * /rfid/LWT - publish online status
+  * /rfid/doorstatus - publish the status of the door
+  * /rfid/action - if doorbell button or door button is pressed
+
+## Commands recv by ESP-RFID
+The message format is JSON it has to include the IP of the device & the command for a message recv by the ESP-RFID firmware. These messages can be received:
+
+### getuser
+Sends all useres back over the (TOPIC)/accesslist 
+Json Command Format:
+```
+{
+   cmd    :'getuser',
+   doorip :'(The ESP-RFID IP of the door to open as String)'
+}
+```
+
+### listusr
+Sends all useres back over (TOPIC)/send 
+Json Command Format:
+```
+{
+    cmd:'listusr',
+    doorip:'(The ESP-RFID IP of the door to open as String)'
+}
+```
+
+### opendoor
+Opens the Door / Magnetic Lock
+Json Command Format:
+```
+{
+    cmd:'opendoor',
+    doorip:'(The ESP-RFID IP of the door to open as String)'
+}
+```
+
+### deletusers
+Delete all users. It deletes all User SPIF files. 
+Json Command Format:
+```
+{
+     cmd:'deletusers',
+     doorip:'(The ESP-RFID IP of the door to open as String)'
+}
+```
+
+### adduser
+Adds a User as SPIF File to the device. That can be shown/edit over the WebGUI
+Json Command Format:
+```
+{
+     cmd:'adduser',
+     doorip:'(The ESP-RFID IP of the door to open as String)'
+}
+```
+
+
+
+
+
+# Orginal RFID Description
 # ESP RFID - Access Control with ESP8266, RC522 PN532 Wiegand RDM6300
 
 [![Chat at https://gitter.im/esp-rfid/Lobby](https://badges.gitter.im/esp-rfid.svg)](https://gitter.im/esp-rfid/Lobby) [![Build Status](https://travis-ci.org/esprfid/esp-rfid.svg?branch=stable)](https://travis-ci.org/esprfid/esp-rfid) [![Codacy Badge](https://api.codacy.com/project/badge/Grade/d475052a09bd4865bc2654f524614cba)](https://www.codacy.com/app/omersiar/esp-rfid?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=esprfid/esp-rfid&amp;utm_campaign=Badge_Grade) [![BCH compliance](https://bettercodehub.com/edge/badge/esprfid/esp-rfid?branch=stable)](https://bettercodehub.com/) [![Bountysource](https://api.bountysource.com/badge/team?team_id=242217)](https://salt.bountysource.com/checkout/amount?team=esp-rfid)

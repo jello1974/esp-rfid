@@ -1,3 +1,9 @@
+## [1.0.2] 2019-01-28
+Added function for doorbell button
+Changes to mqtt publish
+Finished actions for door status(see README file)
+
+
 # Change Log
 All notable changes to this project will be documented in this file.
 
