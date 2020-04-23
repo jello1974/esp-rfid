@@ -22,7 +22,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
  */
-#define VERSION "1.0.2"
+#define VERSION "1.3.8"
 
 #include "Arduino.h"
 #include <ESP8266WiFi.h>
@@ -56,6 +56,11 @@ int relayPin = 13;
 #include <Wiegand.h>
 #include "rfid125kHz.h"
 
+//Jello-------
+// #include <string>
+// using namespace std;
+//------------
+
 MFRC522 mfrc522 = MFRC522();
 PN532 pn532;
 WIEGAND wg;
@@ -86,8 +91,9 @@ extern "C" {
 NtpClient NTP;
 AsyncMqttClient mqttClient;
 Ticker mqttReconnectTimer;
-WiFiEventHandler wifiDisconnectHandler, wifiConnectHandler;
-Bounce button;
+WiFiEventHandler wifiDisconnectHandler, wifiConnectHandler, wifiOnStationModeGotIPHandler;
+Bounce openlockbutton;
+Bounce doorbellbutton;
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
@@ -97,7 +103,13 @@ bool wifiFlag = false;
 bool configMode = false;
 int wmode;
 uint8_t wifipin = 255;
-uint8_t buttonPin = 255;
+uint8_t openlockbuttonpin = 255;
+uint8_t doorbellpin = 255; //Jello
+uint8_t doorstatpin = 255;
+uint8_t lastDoorState = 0;
+int doorstattype = 0;
+std::string xdoorhighstate = "";
+std::string xdoorlowstate = "";
 #define LEDoff HIGH
 #define LEDon LOW
 
@@ -139,10 +151,22 @@ unsigned long activateTime;
 int timeZone;
 
 unsigned long nextbeat = 0;
-unsigned long interval = 1800;
+
+// Add to html mqtt to control the sync
+unsigned long interval = 1800;  // 30 min
+
+// log events to mqtt
+bool mqttEvents = true;
+
+//send mqtt off message after a period //Jello
+unsigned long mqttstartMillis;
+unsigned long mqttcurrentMillis;
+const unsigned long mqttperiod = 3000;
+uint8_t usedmqttbutton = 0;
 
 #include "log.esp"
 #include "mqtt.esp"
+#include "door.esp"
 #include "helpers.esp"
 #include "wsResponses.esp"
 #include "rfid.esp"
@@ -153,6 +177,7 @@ unsigned long interval = 1800;
 
 void ICACHE_FLASH_ATTR setup()
 {
+mqttstartMillis = millis();
 #ifdef OFFICIALBOARD
 	// Set relay pin to LOW signal as early as possible
 	pinMode(13, OUTPUT);
@@ -162,6 +187,7 @@ void ICACHE_FLASH_ATTR setup()
 
 #ifdef DEBUG
 	Serial.begin(9600);
+	//Serial.swap(); //Jello
 	Serial.println();
 
 	Serial.print(F("[ INFO ] ESP RFID v"));
@@ -208,6 +234,7 @@ void ICACHE_FLASH_ATTR setup()
 	}
 	wifiDisconnectHandler = WiFi.onStationModeDisconnected(onWifiDisconnect);
 	wifiConnectHandler = WiFi.onStationModeConnected(onWifiConnect);
+	wifiOnStationModeGotIPHandler = WiFi.onStationModeGotIP(onWifiGotIP);
 	configMode = loadConfiguration();
 	if (!configMode)
 	{
@@ -228,15 +255,46 @@ void ICACHE_RAM_ATTR loop()
 	uptime = NTP.getUptimeSec();
 	previousLoopMillis = currentMillis;
 
-	button.update();
-	if (button.fell()) 
+	openlockbutton.update();
+	if (openlockbutton.fell())
 	{
 #ifdef DEBUG
 		Serial.println("Button has been pressed");
 #endif
 		writeLatest("", "(used open/close button)", 1);
+		if (mqttenabled == 1) //Jello
+		{
+			mqtt_publish_buttonaction(now(), "DoorButton");
+			usedmqttbutton = 1;
+			mqttstartMillis = millis();
+		}
 		activateRelay = true;
 	}
+
+//Jello-----------------------------------
+  doorbellbutton.update();
+	if (doorbellbutton.fell())
+	{
+#ifdef DEBUG
+		Serial.println("DoorbellButton has been pressed");
+#endif
+if (mqttenabled == 1) //Jello
+{
+	mqtt_publish_buttonaction(now(), "DoorBellButton");
+	usedmqttbutton = 1;
+	mqttstartMillis = millis();
+}
+		writeLatest("", "(used doorbell button)", 1);
+	}
+
+	mqttcurrentMillis = millis();
+	if ((mqttcurrentMillis - mqttstartMillis >= mqttperiod) && (usedmqttbutton == 1))
+	{
+		mqtt_publish_buttonaction(now(), "off");
+		mqttstartMillis = mqttcurrentMillis;
+		usedmqttbutton = 0;
+	}
+//---------------------------------------
 
 	if (wifipin != 255 && configMode && !wmode)
 	{
@@ -252,6 +310,11 @@ void ICACHE_RAM_ATTR loop()
 		{
 			if (!(digitalRead(wifipin)==LEDon)) digitalWrite(wifipin, LEDon);
 		}
+	}
+
+	if (doorstatpin != 255)
+	{
+    doorStatus();
 	}
 
 	if (currentMillis >= cooldown)
@@ -280,10 +343,10 @@ void ICACHE_RAM_ATTR loop()
 				Serial.print("mili : ");
 				Serial.println(millis());
 				Serial.println("deactivating relay now");
-#endif				
+#endif
 				digitalWrite(relayPin, !relayType);
 			}
-			activateRelay = false;	
+			activateRelay = false;
 		}
 	}
 	else if (lockType == 0)	// momentary relay mode
@@ -386,6 +449,7 @@ void ICACHE_RAM_ATTR loop()
 			if ((unsigned)now() > nextbeat)
 			{
 				mqtt_publish_heartbeat(now());
+				mqtt_publish_status();
 				nextbeat = (unsigned)now() + interval;
 #ifdef DEBUG
 				Serial.print("[ INFO ] Nextbeat=");

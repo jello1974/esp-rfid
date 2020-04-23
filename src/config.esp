@@ -1,5 +1,6 @@
 bool ICACHE_FLASH_ATTR loadConfiguration()
 {
+	SPIFFS.remove("/latestlog.json"); //Jello
 	File configFile = SPIFFS.open("/config.json", "r");
 	if (!configFile)
 	{
@@ -43,16 +44,52 @@ bool ICACHE_FLASH_ATTR loadConfiguration()
 		}
 	}
 
-	if (hardware.containsKey("buttonpin"))
+	if (hardware.containsKey("doorstatpin"))
 	{
-		buttonPin = hardware["buttonpin"];
-		if (buttonPin != 255)
+		doorstatpin = hardware["doorstatpin"];
+		if (doorstatpin!=255)
 		{
-			button = Bounce();
-			button.attach(buttonPin, INPUT_PULLUP);
-			button.interval(30);
+			pinMode(doorstatpin, INPUT_PULLUP);
 		}
 	}
+
+  if (hardware.containsKey("doorstattype"))
+	{
+		doorstattype = hardware["doorstattype"];
+  	if (doorstattype == 1)
+  	{
+	  	xdoorhighstate = "Closed";
+  		xdoorlowstate = "Open";
+	  }
+		else if (doorstattype == 0)
+		{
+			xdoorhighstate = "Open";
+			xdoorlowstate = "Closed";
+		}
+  }
+
+	if (hardware.containsKey("openlockbuttonpin"))
+	{
+		openlockbuttonpin = hardware["openlockbuttonpin"];
+		if (openlockbuttonpin != 255)
+		{
+			openlockbutton = Bounce();
+			openlockbutton.attach(openlockbuttonpin, INPUT_PULLUP);
+			openlockbutton.interval(30);
+		}
+	}
+
+	if (hardware.containsKey("doorbellpin"))
+	{
+		doorbellpin = hardware["doorbellpin"];
+		if (doorbellpin != 255)
+		{
+			doorbellbutton = Bounce();
+			doorbellbutton.attach(doorbellpin, INPUT_PULLUP);
+			doorbellbutton.interval(30);
+		}
+	}
+
 #ifdef OFFICIALBOARD
 	setupWiegandReader(5, 4);
 #endif
@@ -187,24 +224,38 @@ bool ICACHE_FLASH_ATTR loadConfiguration()
 		mhs = strdup(mhsString.c_str());
 
 		mport = mqtt["port"];
-		
+
 		String muserString = mqtt["user"];
 		muser = strdup(muserString.c_str());
 		String mpasString = mqtt["pswd"];
 		mpas = strdup(mpasString.c_str());
 		String mqttTopicString = mqtt["topic"];
 		mqttTopic = strdup(mqttTopicString.c_str());
-		
+
+		interval = mqtt["syncrate"];
+
+		if (mqtt["mqttlog"]==1)
+			mqttEvents = true;
+		else
+			mqttEvents = false;
+
+
+
 		mqttClient.setServer(mhs, mport);
 		mqttClient.setCredentials(muser, mpas);
 		mqttClient.onDisconnect(onMqttDisconnect);
 		mqttClient.onPublish(onMqttPublish);
+		mqttClient.onSubscribe(onMqttSubscribe);
 		mqttClient.onConnect(onMqttConnect);
+		mqttClient.onMessage(onMqttMessage);
+
+
 #ifdef DEBUG
 		Serial.println("[ INFO ] try to call mqttconnect ");
 #endif
 		connectToMqtt();
 	}
+
 #ifdef DEBUG
 	Serial.println(F("[ INFO ] Configuration done."));
 #endif

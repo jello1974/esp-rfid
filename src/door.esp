@@ -1,0 +1,43 @@
+// door lock
+// nardev -> functions in relation to opening doors with card or with door opening button, should be moved here
+
+
+// door status
+void doorStatus(/* arguments */) {
+
+  // if this changes and if mqtt and mqtt logging enabled, push the message, also to a web socket!
+  if ((digitalRead(doorstatpin) == HIGH) && (lastDoorState == 0))
+  {
+          if (mqttenabled == 1) //Jello strcpy(new char[xdoorhighstate.length() + 1], xdoorhighstate.c_str())
+          {
+          	mqtt_publish_doorstatus(now(), strcpy(new char[xdoorhighstate.length() + 1], xdoorhighstate.c_str()));
+          }
+          else
+          {
+            writeEvent("INFO", "door", strcpy(new char[xdoorhighstate.length() + 1], xdoorhighstate.c_str()), "");
+          }
+          #ifdef DEBUG
+                Serial.println("[ INFO ] Your Door is " + xdoorhighstate);
+          #endif
+          delay(100);
+          lastDoorState = 1;
+  }
+
+  if ((digitalRead(doorstatpin)== LOW) && (lastDoorState == 1))
+  {
+          if (mqttenabled == 1) //Jello
+          {
+            mqtt_publish_doorstatus(now(), strcpy(new char[xdoorlowstate.length() + 1], xdoorlowstate.c_str()));
+          }
+          else
+          {
+            writeEvent("INFO", "door", strcpy(new char[xdoorlowstate.length() + 1], xdoorlowstate.c_str()), "");
+          }
+          #ifdef DEBUG
+                Serial.println("[ INFO ] Your Door is " + xdoorlowstate);
+          #endif
+          delay(100);
+        lastDoorState = 0;
+
+}
+}
