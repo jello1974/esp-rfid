@@ -1,43 +1,92 @@
 // door lock
 // nardev -> functions in relation to opening doors with card or with door opening button, should be moved here
 
+// Citeste starea reala a senzorului magnetic o singura data, la pornire, si initializeaza
+// lastDoorState pe baza ei. Fara acest pas, lastDoorState pornea mereu de la valoarea
+// implicita (0 = "deschisa"), indiferent de starea reala a usii.
+void ICACHE_FLASH_ATTR setupDoorStatus()
+{
+	if (config.doorstatpin == 255)
+	{
+		return;
+	}
+
+	int closedLevel = config.doorstatpinType ? HIGH : LOW;
+
+	if (digitalRead(config.doorstatpin) == closedLevel)
+	{
+		lastDoorState = 1; // usa e inchisa chiar acum
+	}
+	else
+	{
+		lastDoorState = 0; // usa e deschisa chiar acum
+		openDoorMillis = millis();
+	}
+}
 
 // door status
-void doorStatus(/* arguments */) {
-
-  // if this changes and if mqtt and mqtt logging enabled, push the message, also to a web socket!
-  if ((digitalRead(doorstatpin) == HIGH) && (lastDoorState == 0))
-  {
-          if (mqttenabled == 1) //Jello strcpy(new char[xdoorhighstate.length() + 1], xdoorhighstate.c_str())
-          {
-          	mqtt_publish_doorstatus(now(), strcpy(new char[xdoorhighstate.length() + 1], xdoorhighstate.c_str()));
-          }
-          else
-          {
-            writeEvent("INFO", "door", strcpy(new char[xdoorhighstate.length() + 1], xdoorhighstate.c_str()), "");
-          }
-          #ifdef DEBUG
-                Serial.println("[ INFO ] Your Door is " + xdoorhighstate);
-          #endif
-          delay(100);
-          lastDoorState = 1;
+void doorStatus(/* arguments */)
+{
+  if (config.doorstatpin == 255)
+	{
+    return;
   }
 
-  if ((digitalRead(doorstatpin)== LOW) && (lastDoorState == 1))
-  {
-          if (mqttenabled == 1) //Jello
-          {
-            mqtt_publish_doorstatus(now(), strcpy(new char[xdoorlowstate.length() + 1], xdoorlowstate.c_str()));
-          }
-          else
-          {
-            writeEvent("INFO", "door", strcpy(new char[xdoorlowstate.length() + 1], xdoorlowstate.c_str()), "");
-          }
-          #ifdef DEBUG
-                Serial.println("[ INFO ] Your Door is " + xdoorlowstate);
-          #endif
-          delay(100);
-        lastDoorState = 0;
+  // config.doorstatpinType = false (implicit): LOW = inchisa, HIGH = deschisa (comportament vechi)
+  // config.doorstatpinType = true: HIGH = inchisa, LOW = deschisa (senzor cu polaritate inversa)
+  int closedLevel = config.doorstatpinType ? HIGH : LOW;
+  int openLevel = config.doorstatpinType ? LOW : HIGH;
 
-}
+  // if this changes and if mqtt and mqtt logging enabled, push the message, also to a web socket!
+  if ((digitalRead(config.doorstatpin) == closedLevel) && (lastDoorState == 0))
+  {
+    writeEvent("INFO", "door", "Door Closed", "");
+    if (lastTamperState == 1)
+    {
+      lastTamperState = 0;
+      mqttPublishIo("tamper", "OFF");
+    }
+    mqttPublishIo("door", "OFF");
+    delay(100);
+    lastDoorState = 1;
+  }
+
+  if ((digitalRead(config.doorstatpin) == openLevel) && (lastDoorState == 1))
+  {
+    writeEvent("INFO", "door", "Door Open", "");
+    if (digitalRead(config.relayPin[0]) == !config.relayType[0])
+    {
+      writeEvent("WARN", "tamper", "Door was tampered!", "");
+      lastTamperState = 1;
+      mqttPublishIo("tamper", "ON");
+    }
+    else
+    {
+      openDoorMillis = currentMillis;
+#ifdef DEBUG
+      Serial.print("openDoorMillis : ");
+      Serial.println(openDoorMillis);
+#endif
+    }
+    mqttPublishIo("door", "ON");
+    delay(100);
+    lastDoorState = 0;
+  }
+  if (config.maxOpenDoorTime != 0 && (lastDoorState == 0) && (lastTamperState == 0))
+	{
+		if (currentMillis - openDoorMillis >= config.maxOpenDoorTime*1000)
+		{
+#ifdef DEBUG
+      Serial.print("currentMillis : ");
+      Serial.println(currentMillis);
+      Serial.print("delta millis : ");
+      Serial.println(currentMillis - openDoorMillis);
+#endif
+
+			writeEvent("WARN", "tamper", "Door wasn't closed within max open time!", "");
+			lastTamperState = 1;
+			mqttPublishIo("tamper", "ON");
+		}
+	}
+  delayMicroseconds(500);
 }
